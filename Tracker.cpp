@@ -1,10 +1,12 @@
 #include <Arduino.h>
 #include "Tracker.h"
 #include "Voice.h"
+#include "HardwareConfig.h"
 
 Tracker::Tracker() {
   patternLength = 32;
   isPlaying = true;
+  masterGainQ8 = 192;
   bpms[0] = 120;
   bpms[1] = 140;
   bpms[2] = 95;
@@ -72,12 +74,45 @@ int Tracker::UpdateTracker() {
 
   for (int i = 0; i < 4; i++) {
     voices[i].bps = bps;
-    int samp = voices[i].UpdateVoice() / (2 + masterVolume * 5);
+    int samp = (voices[i].UpdateVoice() * masterGainQ8) / 256;
+    samp = samp / (2 + masterVolume * 5);
     sample += samp;
     lastSamples[i] = samp;
   }
 
   return 0;
+}
+
+void Tracker::ApplyPotControls(int masterRaw, int reverbRaw, int delayRaw, int phaserRaw) {
+  if (masterRaw >= 0) {
+    int v = map(masterRaw, 0, 4095, 0, 255);
+    if (v < 0) v = 0;
+    if (v > 255) v = 255;
+    masterGainQ8 = v;
+  }
+
+  if (selectedTrack >= 0 && selectedTrack < 4) {
+    if (reverbRaw >= 0) {
+      int amt = map(reverbRaw, 0, 4095, 0, POT_EFFECT_MAX);
+      if (amt < 0) amt = 0;
+      if (amt > POT_EFFECT_MAX) amt = POT_EFFECT_MAX;
+      voices[selectedTrack].reverbMult = amt;
+    }
+
+    if (delayRaw >= 0) {
+      int amt = map(delayRaw, 0, 4095, 0, POT_EFFECT_MAX);
+      if (amt < 0) amt = 0;
+      if (amt > POT_EFFECT_MAX) amt = POT_EFFECT_MAX;
+      voices[selectedTrack].delayMult = amt;
+    }
+
+    if (phaserRaw >= 0) {
+      int amt = map(phaserRaw, 0, 4095, 0, POT_EFFECT_MAX);
+      if (amt < 0) amt = 0;
+      if (amt > POT_EFFECT_MAX) amt = POT_EFFECT_MAX;
+      voices[selectedTrack].phaserMult = amt;
+    }
+  }
 }
 
 void Tracker::BuildOLEDHintString(String string) {

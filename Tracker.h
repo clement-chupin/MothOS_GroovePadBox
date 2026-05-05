@@ -24,6 +24,7 @@ public:
   Tracker();
   int UpdateTracker();
   void SetCommand(char command, int val);
+  void ApplyPotControls(int masterRaw, int reverbRaw, int delayRaw, int phaserRaw);
   int lastSamples[4];
   char oledInstString[8];
   char oledOctString[6];
@@ -47,6 +48,7 @@ private:
   int patternCopy[4][128];
   int patternCopyOctaves[4][128];
   int patternCopyInstruments[4][128];
+  int masterGainQ8;
   void BuildOLEDHintString(String string);
   void SetNote(int val, int track);
   void SetEffect(int val);

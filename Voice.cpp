@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include "Voice.h"
+#include "HardwareConfig.h"
 
 //drums
 
@@ -21,8 +22,9 @@
 #include "Samples/sfx1.h"
 #include "Samples/sfx2.h"
 #include "Samples/sfx3.h"
-#include "Samples/sfx4.h"
 #include "Samples/sfx5.h"
+#if USE_FULL_SFX_BANK
+#include "Samples/sfx4.h"
 #include "Samples/sfx6.h"
 #include "Samples/sfx7.h"
 #include "Samples/sfx8.h"
@@ -30,6 +32,7 @@
 #include "Samples/sfx10.h"
 #include "Samples/sfx11.h"
 #include "Samples/sfx12.h"
+#endif
 
 //instruments
 #include "Samples/instrument1.h"
@@ -44,6 +47,53 @@
 #include "Samples/instrument10.h"
 
 Voice::Voice() {
+  samplerMode = false;
+  bps = 1;
+  arpNum = 0;
+  delay = 0;
+  overdrive = false;
+  recOctave = 0;
+  phaserMult = 0;
+  lowPassMult = 0;
+  reverbMult = 0;
+  chordMult = 0;
+  pitchMult = 0;
+  delayMult = 0;
+  whooshMult = 0;
+  soloMute = false;
+  mute = false;
+  pitchDur = 0;
+  chordStep = 0;
+  whooshOffset = 0;
+  oldArpNum = 0;
+  envelopeIndex = 0;
+  sample = 0;
+  effect = 0;
+  sampleLen = 0;
+  phaserOffset = 0;
+  phaserDir = 1;
+  isDelay = false;
+  envelopeLength = 0;
+  envelope = 0;
+  envelopeNum = 0;
+  voiceNum = 2;
+  output = 0;
+  note = 7;
+  sampleHistoryIndex = 0;
+  lastSample = 0;
+  baseFreq = 500;
+  baseFreq_ch1 = 0;
+  baseFreq_ch2 = 0;
+  baseFreq_ch3 = 0;
+  baseFreq_ch4 = 0;
+  sampleIndexNext = 0;
+  subSampleIndex = 0;
+  volumeNum = 0;
+
+  for (int i = 0; i < HISTORY_SIZE; i++) {
+    sampleHistory[i] = 0;
+  }
+
   for (int i = 0; i < 48; i++) {
     int valOut = (int)(250 * pow(((i + 12) / 12.0), 2));
     noteFreqLookup[i] = valOut;
@@ -386,6 +436,7 @@ int Voice::ReadSfxWaveform() {
       sampleLen = sfx3Length;
       sample = sfx3[subSampleIndex];
       break;
+#if USE_FULL_SFX_BANK
     case 3:
       sampleLen = sfx4Length;
       sample = sfx4[subSampleIndex];
@@ -422,6 +473,44 @@ int Voice::ReadSfxWaveform() {
       sampleLen = sfx12Length;
       sample = sfx12[subSampleIndex];
       break;
+#else
+    case 3:
+      sampleLen = sfx5Length;
+      sample = sfx5[subSampleIndex];
+      break;
+    case 4:
+      sampleLen = sfx1Length;
+      sample = sfx1[subSampleIndex];
+      break;
+    case 5:
+      sampleLen = sfx2Length;
+      sample = sfx2[subSampleIndex];
+      break;
+    case 6:
+      sampleLen = sfx3Length;
+      sample = sfx3[subSampleIndex];
+      break;
+    case 7:
+      sampleLen = sfx5Length;
+      sample = sfx5[subSampleIndex];
+      break;
+    case 8:
+      sampleLen = sfx1Length;
+      sample = sfx1[subSampleIndex];
+      break;
+    case 9:
+      sampleLen = sfx2Length;
+      sample = sfx2[subSampleIndex];
+      break;
+    case 10:
+      sampleLen = sfx3Length;
+      sample = sfx3[subSampleIndex];
+      break;
+    case 11:
+      sampleLen = sfx5Length;
+      sample = sfx5[subSampleIndex];
+      break;
+#endif
   }
   if (sampleIndex >= sampleLen * 1000) {
     sample = 0;
@@ -592,7 +681,7 @@ void Voice::ResetEffects() {
 void Voice::UpdateHistory(int sample) {
   sampleHistory[sampleHistoryIndex / 2] = sample;
   sampleHistoryIndex++;
-  if (sampleHistoryIndex > 24000 - 2) {
+  if (sampleHistoryIndex > HISTORY_STEPS - 2) {
     sampleHistoryIndex = 0;
   }
 }
@@ -601,7 +690,7 @@ int Voice::GetHistorySample(int backoffset) {
   int ind = sampleHistoryIndex - backoffset;
 
   if (ind < 0) {
-    ind = 24000 + ind;
+    ind = HISTORY_STEPS + ind;
   }
   return sampleHistory[ind / 2];
 }
