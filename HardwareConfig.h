@@ -64,7 +64,7 @@ constexpr uint8_t DISPLAY_I2C_ADDR = 0x3C;
 constexpr int POT_PIN_VOLUME = 34;   // master volume
 constexpr int POT_PIN_REVERB = 35;   // reverb amount (selected track)
 constexpr int POT_PIN_DELAY  = 32;   // delay amount (selected track)
-constexpr int POT_PIN_PHASER = 2;    // phaser amount (selected track)
+constexpr int POT_PIN_PHASER = 33;   // phaser amount (selected track)
 
 // Smoothing and deadzone for stable analog control.
 constexpr uint8_t POT_ALPHA_SHIFT = 3;   // 1/8 smoothing

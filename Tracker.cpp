@@ -93,30 +93,31 @@ void Tracker::ApplyPotControls(int masterRaw, int reverbRaw, int delayRaw, int p
 
   if (selectedTrack >= 0 && selectedTrack < 4) {
     if (reverbRaw >= 0) {
-      int amt = map(reverbRaw, 0, 4095, 0, POT_EFFECT_MAX);
-      if (amt < 0) amt = 0;
-      if (amt > POT_EFFECT_MAX) amt = POT_EFFECT_MAX;
+      // Map to 0-4 then constrain to ensure we reach max value
+      int amt = map(reverbRaw, 0, 4095, 0, 4);
+      amt = constrain(amt, 0, POT_EFFECT_MAX);
       voices[selectedTrack].reverbMult = amt;
     }
 
     if (delayRaw >= 0) {
-      int amt = map(delayRaw, 0, 4095, 0, POT_EFFECT_MAX);
-      if (amt < 0) amt = 0;
-      if (amt > POT_EFFECT_MAX) amt = POT_EFFECT_MAX;
+      // Map to 0-4 then constrain to ensure we reach max value
+      int amt = map(delayRaw, 0, 4095, 0, 4);
+      amt = constrain(amt, 0, POT_EFFECT_MAX);
       voices[selectedTrack].delayMult = amt;
     }
 
     if (phaserRaw >= 0) {
-      int amt = map(phaserRaw, 0, 4095, 0, POT_EFFECT_MAX);
-      if (amt < 0) amt = 0;
-      if (amt > POT_EFFECT_MAX) amt = POT_EFFECT_MAX;
+      // Map to 0-4 then constrain to ensure we reach max value
+      int amt = map(phaserRaw, 0, 4095, 0, 4);
+      amt = constrain(amt, 0, POT_EFFECT_MAX);
       voices[selectedTrack].phaserMult = amt;
     }
   }
 }
 
 void Tracker::BuildOLEDHintString(String string) {
-  hintTime = 120;
+  // Keep hints brief so UI stays responsive.
+  hintTime = 10;
   string.toCharArray(hint, 15);
 }
 
@@ -253,11 +254,11 @@ void Tracker::SetCommand(char command, int val) {
         BuildOLEDHintString(String("Instrument: " + String(val)));
         String("INS" + String(val)).toCharArray(oledInstString, 8);
       } else if (val == 1) {
-        BuildOLEDHintString(String("SFX Bank"));
-        String("SFX").toCharArray(oledInstString, 6);
+        BuildOLEDHintString(String("Drum Bank 1"));
+        String("DRM1").toCharArray(oledInstString, 6);
       } else {
-        BuildOLEDHintString(String("Drum Bank"));
-        String("DRUM").toCharArray(oledInstString, 6);
+        BuildOLEDHintString(String("Drum Bank 0"));
+        String("DRM0").toCharArray(oledInstString, 6);
       }
       break;
     case 'H':

@@ -102,8 +102,11 @@ const int kPotPins[kPotCount] = {
   POT_PIN_DELAY,
   POT_PIN_PHASER
 };
+const int POT_CHANGE_THRESHOLD = 80;  // Noise filter: only show feedback for changes > 80
 int potSmoothed[kPotCount] = {0, 0, 0, 0};
 int potApplied[kPotCount] = {0, 0, 0, 0};
+int potLastFeedback[kPotCount] = {0, 0, 0, 0};  // Track last value shown for feedback
+const char* potEffectNames[kPotCount] = {"VOL", "REVERB", "DELAY", "PHASER"};
 #endif
 
 void Task2Loop(void* parameter);
@@ -204,27 +207,39 @@ void loop() {
   }
 #endif
 
-  // Feed I2S continuously based on elapsed microseconds.
+  // Feed I2S at a stable cadence (avoid tiny 1-sample bursts).
   const uint32_t nowUs = micros();
   uint32_t elapsedUs = nowUs - g_lastAudioUs;
-  uint32_t samplesToWrite = (elapsedUs * (uint32_t)sampleRate) / 1000000UL;
-  if (samplesToWrite == 0) samplesToWrite = 1;
-  if (samplesToWrite > 64) samplesToWrite = 64;
-  g_lastAudioUs += (samplesToWrite * 1000000UL) / (uint32_t)sampleRate;
+  const uint32_t samplePeriodUs = 1000000UL / (uint32_t)sampleRate;
+  uint32_t samplesToWrite = elapsedUs / samplePeriodUs;
+  if (samplesToWrite > 128) samplesToWrite = 128;
 
-  int16_t frameBuf[64 * 2];
-  for (uint32_t s = 0; s < samplesToWrite; s++) {
-    tracker.UpdateTracker();
+  if (samplesToWrite > 0) {
+    g_lastAudioUs += samplesToWrite * samplePeriodUs;
 
-    int32_t boosted = (int32_t)tracker.sample * 2;
-    if (boosted > 32767) boosted = 32767;
-    if (boosted < -32768) boosted = -32768;
-    int16_t sampleOut = (int16_t)boosted;
+    int16_t frameBuf[128 * 2];
+    for (uint32_t s = 0; s < samplesToWrite; s++) {
+      tracker.UpdateTracker();
 
-    frameBuf[s * 2 + 0] = sampleOut;
-    frameBuf[s * 2 + 1] = sampleOut;
+      int32_t boosted = (int32_t)tracker.sample * 2;
+
+      // Soft clip keeps energy while avoiding harsh digital clipping.
+      const int32_t knee = 22000;
+      if (boosted > knee) {
+        boosted = knee + ((boosted - knee) >> 2);
+      } else if (boosted < -knee) {
+        boosted = -knee + ((boosted + knee) >> 2);
+      }
+
+      if (boosted > 32767) boosted = 32767;
+      if (boosted < -32768) boosted = -32768;
+      int16_t sampleOut = (int16_t)boosted;
+
+      frameBuf[s * 2 + 0] = sampleOut;
+      frameBuf[s * 2 + 1] = sampleOut;
+    }
+    i2s.write((uint8_t*)frameBuf, samplesToWrite * sizeof(int16_t) * 2);
   }
-  i2s.write((uint8_t*)frameBuf, samplesToWrite * sizeof(int16_t) * 2);
 
   if (millis() - g_lastLedRenderMs >= 16) {
     g_lastLedRenderMs = millis();
@@ -258,8 +273,30 @@ static void updatePotentiometers() {
     int delta = raw - potSmoothed[i];
     potSmoothed[i] += (delta >> POT_ALPHA_SHIFT);
 
+    // Apply to tracker immediately with small threshold to avoid jitter
     if (abs(potSmoothed[i] - potApplied[i]) > 2) {
       potApplied[i] = potSmoothed[i];
+    }
+    
+    // Only show feedback for significant changes (filter noise)
+    if (abs(potApplied[i] - potLastFeedback[i]) > POT_CHANGE_THRESHOLD) {
+      potLastFeedback[i] = potApplied[i];
+      
+      // Map raw ADC value to display value
+      int displayValue = 0;
+      int maxValue = 0;
+      if (i == 0) {
+        // Volume: 0-4095 → 0-255
+        displayValue = map(potApplied[i], 0, 4095, 0, 255);
+        maxValue = 255;
+      } else {
+        // Reverb, Delay, Phaser: 0-4095 → 0-POT_EFFECT_MAX
+        // Map to 0-4 then constrain to ensure we reach max value
+        displayValue = map(potApplied[i], 0, 4095, 0, 4);
+        displayValue = constrain(displayValue, 0, POT_EFFECT_MAX);
+        maxValue = POT_EFFECT_MAX;
+      }
+      screenManager.ShowPotFeedback(potEffectNames[i], displayValue, maxValue);
     }
   }
 
@@ -280,7 +317,7 @@ void Task2Loop(void* parameter) {
     screen->clearBuffer();
     screenManager.Update(tracker, *screen, ledCommandOLED, volumeBars, noteChars);
     screen->sendBuffer();
-    delay(120);
+    delay(40);
   }
 }
 

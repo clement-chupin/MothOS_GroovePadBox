@@ -36,6 +36,10 @@
 ScreenManager::ScreenManager() {
   lastNoteBeat = -1;
   noteBeatTime = 0;
+  potFeedbackUntilMs = 0;
+  potFeedbackValue = 0;
+  potFeedbackMax = 0;
+  memset(potFeedbackEffect, 0, sizeof(potFeedbackEffect));
 }
 
 void ScreenManager::Update(Tracker &tracker, U8G2 &screen, char ledCommandOLED, int volumeBars[4], String noteChars[12]) {
@@ -50,6 +54,7 @@ void ScreenManager::Update(Tracker &tracker, U8G2 &screen, char ledCommandOLED, 
       tracker.hintTime--;
       screen.drawStr(4, 16, tracker.hint);
     }
+    DrawPotFeedback(screen);
   }
 }
 
@@ -140,18 +145,18 @@ bool ScreenManager::UpdateInstructionsScreen(Tracker &tracker, U8G2 &screen, cha
     screen.drawStr(cellW * 1 + textX, cellH * 0 + textY, "OCT1");
     screen.drawStr(cellW * 2 + textX, cellH * 0 + textY, "OCT2");
     screen.drawStr(cellW * 3 + textX, cellH * 0 + textY, "OCT3");
-    screen.drawStr(cellW * 0 + textX, cellH * 1 + textY, "INS6");
-    screen.drawStr(cellW * 1 + textX, cellH * 1 + textY, "INS7");
-    screen.drawStr(cellW * 2 + textX, cellH * 1 + textY, "INS8");
-    screen.drawStr(cellW * 3 + textX, cellH * 1 + textY, "INS9");
-    screen.drawStr(cellW * 0 + textX, cellH * 2 + textY, "INS2");
-    screen.drawStr(cellW * 1 + textX, cellH * 2 + textY, "INS3");
-    screen.drawStr(cellW * 2 + textX, cellH * 2 + textY, "INS4");
-    screen.drawStr(cellW * 3 + textX, cellH * 2 + textY, "INS5");
-    screen.drawStr(cellW * 0 + textX, cellH * 3 + textY, "DRMS");
-    screen.drawStr(cellW * 1 + textX, cellH * 3 + textY, "SFX");
-    screen.drawStr(cellW * 2 + textX, cellH * 3 + textY, "INS0");
-    screen.drawStr(cellW * 3 + textX, cellH * 3 + textY, "INS1");
+    screen.drawStr(cellW * 0 + textX, cellH * 1 + textY, "INS8");
+    screen.drawStr(cellW * 1 + textX, cellH * 1 + textY, "INS9");
+    screen.drawStr(cellW * 2 + textX, cellH * 1 + textY, "INS10");
+    screen.drawStr(cellW * 3 + textX, cellH * 1 + textY, "INS11");
+    screen.drawStr(cellW * 0 + textX, cellH * 2 + textY, "INS4");
+    screen.drawStr(cellW * 1 + textX, cellH * 2 + textY, "INS5");
+    screen.drawStr(cellW * 2 + textX, cellH * 2 + textY, "INS6");
+    screen.drawStr(cellW * 3 + textX, cellH * 2 + textY, "INS7");
+    screen.drawStr(cellW * 0 + textX, cellH * 3 + textY, "DRUM0");
+    screen.drawStr(cellW * 1 + textX, cellH * 3 + textY, "DRUM1");
+    screen.drawStr(cellW * 2 + textX, cellH * 3 + textY, "INS2");
+    screen.drawStr(cellW * 3 + textX, cellH * 3 + textY, "INS3");
   } else {
     return false;
   }
@@ -161,7 +166,7 @@ bool ScreenManager::UpdateInstructionsScreen(Tracker &tracker, U8G2 &screen, cha
 void ScreenManager::UpdateMainScreen(Tracker &tracker, U8G2 &screen, char ledCommandOLED, int volumeBars[4], String noteChars[12]) {
   (void)ledCommandOLED;
 
-  char buffa[8];
+  char buffa[16];
   if (tracker.lastNoteTrackIndex == lastNoteBeat) {
     if (noteBeatTime > 0) {
       noteBeatTime--;
@@ -171,40 +176,48 @@ void ScreenManager::UpdateMainScreen(Tracker &tracker, U8G2 &screen, char ledCom
     noteBeatTime = 200;
   }
 
+  const int splitX = 50;
+  const int topBottomSplitY = 62;
+
   screen.drawFrame(0, 0, 128, 128);
-  screen.drawLine(0, 24, 127, 24);
-  screen.drawLine(0, 66, 127, 66);
-  screen.drawLine(74, 0, 74, 66);
+  screen.drawLine(0, topBottomSplitY, 127, topBottomSplitY);
+  screen.drawLine(splitX, 0, splitX, topBottomSplitY);
 
+  // Compact left column for context only.
   screen.setFont(u8g2_font_6x13_tf);
-  screen.drawStr(6, 14, tracker.oledInstString);
+  screen.drawStr(4, 12, tracker.oledInstString);
 
-  snprintf(buffa, sizeof(buffa), "TR:%d", tracker.selectedTrack + 1);
-  screen.drawStr(6, 30, buffa);
+  snprintf(buffa, sizeof(buffa), "T%d", tracker.selectedTrack + 1);
+  screen.drawStr(4, 27, buffa);
 
-  snprintf(buffa, sizeof(buffa), "OC:%d", tracker.voices[tracker.selectedTrack].octave);
-  screen.drawStr(6, 44, buffa);
+  snprintf(buffa, sizeof(buffa), "O%d", tracker.voices[tracker.selectedTrack].octave);
+  screen.drawStr(4, 41, buffa);
 
-  screen.drawStr(6, 58, tracker.voices[tracker.selectedTrack].samplerMode ? "SAMP" : "NOTE");
+  screen.drawStr(4, 55, tracker.voices[tracker.selectedTrack].samplerMode ? "SMP" : "NOT");
 
-  screen.setFont(u8g2_font_logisoso20_tf);
-  if (noteBeatTime > 0) {
-    snprintf(buffa, sizeof(buffa), "%d", tracker.lastNoteTrackIndex);
-    screen.drawStr(84, 23, buffa);
-  }
-
+  // Bigger right column with large step readout.
   char stepBuf[12];
   if (!tracker.pressedOnce) {
-    snprintf(stepBuf, sizeof(stepBuf), "READY");
+    snprintf(stepBuf, sizeof(stepBuf), "00/%02d", tracker.patternLength);
   } else {
     int step = tracker.trackIndex % tracker.patternLength;
-    snprintf(stepBuf, sizeof(stepBuf), "%02d/%d", step, tracker.patternLength);
+    snprintf(stepBuf, sizeof(stepBuf), "%02d/%02d", step, tracker.patternLength);
   }
-  screen.drawStr(78, 52, stepBuf);
+
+  screen.setFont(u8g2_font_logisoso20_tf);
+  screen.drawStr(splitX + 2, 31, stepBuf);
 
   screen.setFont(u8g2_font_6x13_tf);
-  snprintf(buffa, sizeof(buffa), "PAT:%d/4", tracker.currentPattern + 1);
-  screen.drawStr(78, 63, buffa);
+  snprintf(buffa, sizeof(buffa), "P%d", tracker.currentPattern + 1);
+  screen.drawStr(splitX + 2, 48, buffa);
+
+  if (noteBeatTime > 0) {
+    // Keep the blinking beat marker that you liked.
+    screen.drawDisc(121, 10, 3);
+    screen.setDrawColor(0);
+    screen.drawDisc(121, 10, 1);
+    screen.setDrawColor(1);
+  }
 
   for (int i = 0; i < 4; i++) {
     int val = tracker.lastSamples[i] / 110;
@@ -219,20 +232,21 @@ void ScreenManager::UpdateMainScreen(Tracker &tracker, U8G2 &screen, char ledCom
       if (volumeBars[i] < 0)
         volumeBars[i] = 0;
     }
-    int x0 = 4 + i * 31;
-    int y0 = 74;
+    const int rowH = 16;
+    int x0 = 2;
+    int y0 = 66 + i * rowH;
     bool selected = (tracker.selectedTrack == i);
 
     if (selected) {
-      screen.drawRBox(x0, y0, 28, 50, 3);
+      screen.drawBox(x0, y0, 124, rowH - 1);
       screen.setDrawColor(0);
     } else {
-      screen.drawRFrame(x0, y0, 28, 50, 3);
+      screen.drawFrame(x0, y0, 124, rowH - 1);
     }
 
     snprintf(buffa, sizeof(buffa), "T%d", i + 1);
     screen.setFont(u8g2_font_6x13_tf);
-    screen.drawStr(x0 + 7, y0 + 12, buffa);
+    screen.drawStr(x0 + 4, y0 + 12, buffa);
 
     char buff[4];
     bool showNote = false;
@@ -256,25 +270,64 @@ void ScreenManager::UpdateMainScreen(Tracker &tracker, U8G2 &screen, char ledCom
     if (showNote) {
       screen.setFont(u8g2_font_5x7_tf);
       String(noteChars[dnote] + String(doct)).toCharArray(buff, 4);
-      screen.drawStr(x0 + 5, y0 + 22, buff);
+      screen.drawStr(x0 + 24, y0 + 12, buff);
     } else {
       screen.setFont(u8g2_font_5x7_tf);
-      screen.drawStr(x0 + 6, y0 + 22, "--");
-    }
-
-    int meterHeight = volumeBars[i] * 2;
-    if (meterHeight > 32) meterHeight = 32;
-    if (meterHeight > 0) {
-      screen.drawBox(x0 + 10, y0 + 46 - meterHeight, 8, meterHeight);
+      screen.drawStr(x0 + 24, y0 + 12, "--");
     }
 
     int noteAtStep = tracker.tracks[i][tracker.trackIndex];
     if (noteAtStep > 0) {
-      screen.drawDisc(x0 + 22, y0 + 10, 2);
+      screen.drawDisc(x0 + 52, y0 + 8, 2);
+    }
+
+    // Minimal horizontal meter aligned with each track row.
+    int meterWidth = volumeBars[i] * 3;
+    if (meterWidth > 60) meterWidth = 60;
+    screen.drawFrame(x0 + 60, y0 + 4, 62, 8);
+    if (meterWidth > 0) {
+      screen.drawBox(x0 + 61, y0 + 5, meterWidth, 6);
     }
 
     if (selected) {
       screen.setDrawColor(1);
     }
   }
+}
+
+void ScreenManager::ShowPotFeedback(const char *effectName, int value, int maxValue) {
+  potFeedbackUntilMs = millis() + 160;
+  strncpy(potFeedbackEffect, effectName, sizeof(potFeedbackEffect) - 1);
+  potFeedbackEffect[sizeof(potFeedbackEffect) - 1] = '\0';
+  potFeedbackValue = value;
+  potFeedbackMax = maxValue;
+}
+
+void ScreenManager::DrawPotFeedback(U8G2 &screen) {
+  if ((int32_t)(potFeedbackUntilMs - millis()) <= 0) return;
+  
+  // Draw compact popup so it disappears quickly and does not hide the whole UI.
+  screen.setDrawColor(0);
+  screen.drawBox(20, 44, 88, 40);
+  screen.setDrawColor(1);
+  screen.drawRFrame(20, 44, 88, 40, 3);
+  
+  screen.setFont(u8g2_font_5x7_tf);
+  screen.drawStr(26, 54, potFeedbackEffect);
+  
+  int barWidth = 72;
+  int barX = 28;
+  int barY = 60;
+  screen.drawRFrame(barX, barY, barWidth, 10, 2);
+  
+  if (potFeedbackMax > 0) {
+    int filledWidth = (potFeedbackValue * barWidth) / potFeedbackMax;
+    if (filledWidth > 0) {
+      screen.drawBox(barX + 1, barY + 1, filledWidth - 1, 8);
+    }
+  }
+  
+  char valueBuf[16];
+  snprintf(valueBuf, sizeof(valueBuf), "%d/%d", potFeedbackValue, potFeedbackMax);
+  screen.drawStr(42, 79, valueBuf);
 }

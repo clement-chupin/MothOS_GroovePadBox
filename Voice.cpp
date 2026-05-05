@@ -136,8 +136,6 @@ int Voice::UpdateVoice() {
   int sample = 0;
   if (voiceNum > 1 || samplerMode) {
     sample = ReadWaveform();
-  } else if (voiceNum == 1) {
-    sample = ReadSfxWaveform();
   } else {
     sample = ReadDrumWaveform();
   }
@@ -184,11 +182,20 @@ int Voice::UpdateVoice() {
   UpdateHistory(sample);
 
   if (reverbMult > 0) {
-    int rSample = 0;
-    for (int i = 2; i < 7; i++) {
-      rSample += GetHistorySample(i * 450 * reverbMult);
+    int wetSample = 0;
+    int tapCount = 0;
+    const int tapSpacing = 280 * reverbMult;
+    for (int i = 1; i <= 4; i++) {
+      wetSample += GetHistorySample(i * tapSpacing) / (i + 1);
+      tapCount++;
     }
-    sample = rSample / 2;
+
+    if (tapCount > 0) {
+      wetSample /= tapCount;
+    }
+
+    // Keep the original attack and mix in a softer tail to avoid metallic artifacts.
+    sample = ((sample * 3) + (wetSample * 2)) / 5;
   }
   if (soloMute || mute) {
     sample = 0;
@@ -334,6 +341,7 @@ int Voice::ReadWaveform() {
 }
 
 int Voice::ReadDrumWaveform() {
+  bool drumBank1 = (voiceNum == 1);
   subSampleIndex = sampleIndex / 1000;
   if (envelopeNum > 1) {
     subSampleIndex = sampleLen - sampleIndex / 1000 - 1;
@@ -341,52 +349,52 @@ int Voice::ReadDrumWaveform() {
 
   switch (note) {
     case 0:
-      sampleLen = kick1Length;
-      sample = kick1[subSampleIndex];
+      sampleLen = drumBank1 ? kick2Length : kick1Length;
+      sample = drumBank1 ? kick2[subSampleIndex] : kick1[subSampleIndex];
       break;
     case 1:
-      sampleLen = snare1Length;
-      sample = snare1[subSampleIndex];
+      sampleLen = drumBank1 ? snare2Length : snare1Length;
+      sample = drumBank1 ? snare2[subSampleIndex] : snare1[subSampleIndex];
       break;
     case 2:
-      sampleLen = special1Length;
-      sample = special1[subSampleIndex];
+      sampleLen = drumBank1 ? special2Length : special1Length;
+      sample = drumBank1 ? special2[subSampleIndex] : special1[subSampleIndex];
       break;
     case 3:
-      sampleLen = hihat1Length;
-      sample = hihat1[subSampleIndex];
+      sampleLen = drumBank1 ? hihat2Length : hihat1Length;
+      sample = drumBank1 ? hihat2[subSampleIndex] : hihat1[subSampleIndex];
       break;
     case 4:
-      sampleLen = kick2Length;
-      sample = kick2[subSampleIndex];
+      sampleLen = drumBank1 ? kick1Length : kick2Length;
+      sample = drumBank1 ? kick1[subSampleIndex] : kick2[subSampleIndex];
       break;
     case 5:
-      sampleLen = snare2Length;
-      sample = snare2[subSampleIndex];
+      sampleLen = drumBank1 ? snare1Length : snare2Length;
+      sample = drumBank1 ? snare1[subSampleIndex] : snare2[subSampleIndex];
       break;
     case 6:
-      sampleLen = special2Length;
-      sample = special2[subSampleIndex];
+      sampleLen = drumBank1 ? special1Length : special2Length;
+      sample = drumBank1 ? special1[subSampleIndex] : special2[subSampleIndex];
       break;
     case 7:
-      sampleLen = hihat2Length;
-      sample = hihat2[subSampleIndex];
+      sampleLen = drumBank1 ? hihat1Length : hihat2Length;
+      sample = drumBank1 ? hihat1[subSampleIndex] : hihat2[subSampleIndex];
       break;
     case 8:
-      sampleLen = kick3Length;
-      sample = kick3[subSampleIndex];
+      sampleLen = drumBank1 ? kick2Length : kick1Length;
+      sample = drumBank1 ? kick2[subSampleIndex] : kick1[subSampleIndex];
       break;
     case 9:
-      sampleLen = snare3Length;
-      sample = snare3[subSampleIndex];
+      sampleLen = drumBank1 ? snare2Length : snare1Length;
+      sample = drumBank1 ? snare2[subSampleIndex] : snare1[subSampleIndex];
       break;
     case 10:
-      sampleLen = special3Length;
-      sample = special3[subSampleIndex];
+      sampleLen = drumBank1 ? special2Length : special1Length;
+      sample = drumBank1 ? special2[subSampleIndex] : special1[subSampleIndex];
       break;
     case 11:
-      sampleLen = hihat3Length;
-      sample = hihat3[subSampleIndex];
+      sampleLen = drumBank1 ? hihat2Length : hihat1Length;
+      sample = drumBank1 ? hihat2[subSampleIndex] : hihat1[subSampleIndex];
       break;
   }
   if (sampleIndex >= sampleLen * 1000) {
